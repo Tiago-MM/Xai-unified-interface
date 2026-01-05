@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import cv2
 from PIL import Image
 from models.audio_models import load_unified_model
-from explanations.xai_methods import get_gradcam, superimpose_heatmap
+from explanations.xai_methods import get_gradcam, superimpose_heatmap, get_lime
 
 # Configuration de l'environnement pour éviter les crashs sur Mac
 os.environ["TF_USE_LEGACY_KERAS"] = "1"
@@ -104,22 +104,26 @@ if uploaded_file:
     with tab2:
         st.subheader("Analyse comparative Side-by-Side")
         if uploaded_file and len(selected_xai) >= 1:
-            # On définit la dernière couche conv selon le modèle (VGG16 utilise 'block5_conv3')
             conv_layer = "block5_conv3" if "VGG16" in selected_model else "conv5_block3_out"
-            
             cols = st.columns(len(selected_xai))
+            
             for i, method in enumerate(selected_xai):
                 with cols[i]:
                     st.info(f"Méthode : {method}")
+                    
                     if method == "Grad-CAM":
-                        # Calcul réel
                         heatmap = get_gradcam(model, input_data, conv_layer)
-                        # Pour l'audio on utilise le spectrogramme, pour l'image l'original
                         base_img = cv2.resize(np.stack([S_db]*3, axis=-1) if input_type=="Audio" else np.array(original_img), (224,224))
                         result = superimpose_heatmap(heatmap, base_img)
                         st.image(result, caption="Heatmap Grad-CAM", use_container_width=True)
+                    
+                    elif method == "LIME":
+                        with st.spinner("Calcul de LIME en cours..."):
+                            # Appel de la nouvelle fonction
+                            lime_result = get_lime(model, input_data)
+                            st.image(lime_result, caption="Segments LIME (Top Features)", use_container_width=True)
+                    
                     else:
                         st.image("https://via.placeholder.com/300?text=" + method, use_container_width=True)
-
 else:
     st.info("Veuillez uploader un fichier (Audio .wav ou Image .jpg/.png) pour commencer.")

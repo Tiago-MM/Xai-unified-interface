@@ -45,3 +45,33 @@ def superimpose_heatmap(heatmap, original_img):
     
     # On force le retour en uint8 (0-255) pour Streamlit
     return np.uint8(np.clip(superimposed_img, 0, 255))
+
+
+from lime import lime_image
+from skimage.segmentation import mark_boundaries
+
+def get_lime(model, img_array):
+    """Génère une explication LIME en identifiant les super-pixels influents."""
+    explainer = lime_image.LimeImageExplainer()
+    
+    # explainer.explain_instance prend une image 3D (pas de batch)
+    # On réduit num_samples à 50 pour la rapidité en démo
+    explanation = explainer.explain_instance(
+        img_array[0].astype('double'), 
+        model.predict, 
+        top_labels=1, 
+        hide_color=0, 
+        num_samples=50 
+    )
+    
+    # Récupération du masque pour la classe prédite
+    temp, mask = explanation.get_image_and_mask(
+        explanation.top_labels[0], 
+        positive_only=True, 
+        num_features=5, 
+        hide_rest=False
+    )
+    
+    # Transformation pour que l'image soit compatible avec Streamlit (0 à 1)
+    img_boundaried = mark_boundaries(temp / temp.max(), mask)
+    return img_boundaried
