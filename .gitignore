@@ -5,3 +5,6 @@ env/
 
 # Python cache
 __pycache__/
+
+
+spectrograms/*.png
