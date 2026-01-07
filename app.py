@@ -95,7 +95,7 @@ if uploaded_file:
                 col1, col2 = st.columns(2)
                 with col1:
                     st.metric("Verdict Médical", label, f"Probabilité: {score*100:.2f}%")
-                    st.image(original_img, caption="Radiographie originale", use_container_width=True)
+                    st.image(original_img, caption="Radiographie originale", width='stretch')
                 with col2:
                     st.subheader("Explication Grad-CAM")
                     st.warning("Identification des zones tumorales suspectes dans les poumons.")
@@ -115,15 +115,21 @@ if uploaded_file:
                         heatmap = get_gradcam(model, input_data, conv_layer)
                         base_img = cv2.resize(np.stack([S_db]*3, axis=-1) if input_type=="Audio" else np.array(original_img), (224,224))
                         result = superimpose_heatmap(heatmap, base_img)
-                        st.image(result, caption="Heatmap Grad-CAM", use_container_width=True)
+                        st.image(result, caption="Heatmap Grad-CAM", width='stretch')
                     
                     elif method == "LIME":
                         with st.spinner("Calcul de LIME en cours..."):
-                            # Appel de la nouvelle fonction
                             lime_result = get_lime(model, input_data)
-                            st.image(lime_result, caption="Segments LIME (Top Features)", use_container_width=True)
-                    
+                            
+                            # --- AJOUT DE LA NORMALISATION ---
+                            # Si l'image est en flottants, on la ramène entre 0 et 255
+                            if lime_result.max() <= 1.0:
+                                lime_result = (lime_result * 255).astype(np.uint8)
+                            else:
+                                lime_result = lime_result.astype(np.uint8)
+
+                            st.image(lime_result, caption="Segments LIME (Top Features)", width='stretch')
                     else:
-                        st.image("https://via.placeholder.com/300?text=" + method, use_container_width=True)
+                        st.image("https://via.placeholder.com/300?text=" + method, width='stretch')
 else:
     st.info("Veuillez uploader un fichier (Audio .wav ou Image .jpg/.png) pour commencer.")
