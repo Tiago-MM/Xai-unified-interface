@@ -2,11 +2,11 @@ import tensorflow as tf
 import tf_keras as keras
 import os
 
-# 2 dossiers au-dessus du fichier actuel
+# 2 directory of the script
 script_dir = os.path.dirname(__file__)
 
 def load_unified_model(model_name):
-    # Les architectures pour Repo 1 (Audio) et Repo 2 (Image)
+    # architecture detection and loading custom model
     if "VGG16" in model_name:
         return keras.models.load_model(os.path.join(script_dir, '..', '..', 'models', 'my_vgg16.h5'))
     elif "ResNet" in model_name:

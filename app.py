@@ -26,34 +26,34 @@ def main():
 
 try :
         
-    # --- INTERFACE STREAMLIT ---
+    # streamlit config
     st.set_page_config(page_title="XAI Unified Interface", layout="wide")
     st.title("🛡️ Unified Explainable AI Interface")
 
-    st.sidebar.header("1. Chargement des données")
-    uploaded_file = st.sidebar.file_uploader("Choisissez un fichier", type=['wav', 'png', 'jpg', 'jpeg'])
+    st.sidebar.header("data input & model selection")
+    uploaded_file = st.sidebar.file_uploader("Drag & drop a file", type=['wav', 'png', 'jpg', 'jpeg'])
 
     if uploaded_file:
         file_ext = uploaded_file.name.split('.')[-1].lower()
         
-        # Vérification automatique de compatibilité
+        # verify file type
         if file_ext == 'wav':
             input_type = "Audio"
             available_models = ["VGG16 (Audio)", "ResNet", "MobileNet"]
-            available_xai = ["Grad-CAM", "LIME", "SHAP"] # Requis pour audio
+            available_xai = ["Grad-CAM", "LIME", "SHAP"] 
         else:
             input_type = "Image"
             available_models = ["AlexNet (Cancer)", "DenseNet"]
-            available_xai = ["Grad-CAM", "LIME"] # Grad-CAM requis pour radiographies
+            available_xai = ["Grad-CAM", "LIME", "SHAP"] 
 
-        selected_model = st.sidebar.selectbox("Modèle de classification", available_models)
-        selected_xai = st.sidebar.multiselect("Méthodes XAI à appliquer", available_xai)
+        selected_model = st.sidebar.selectbox("Classification models", available_models)
+        selected_xai = st.sidebar.multiselect("Xai Methods", available_xai) 
 
-        tab1, tab2 = st.tabs(["🚀 Analyse Unique", "📊 Comparaison XAI"])
+        tab1, tab2 = st.tabs(["🚀 Analysis", "📊 Explainability"]) 
         input_data = None
         model = None
         with tab1:
-            if st.button("Lancer l'Analyse"):
+            if st.button("Launch Analysis"):
                 model = load_unified_model(selected_model)
                 
                 if input_type == "Audio":
@@ -69,10 +69,10 @@ try :
                         librosa.display.specshow(S_db, ax=ax)
                         st.pyplot(fig)
 
-                else: # Traitement IMAGE (Repo 2)
+                else: # Image
                     input_data, original_img = process_chest_xray(uploaded_file)
                     if model.input_shape[-1] == 1 and input_data.shape[-1] == 3:
-                        # Conversion moyenne des canaux pour passer de (1, 224, 224, 3) à (1, 224, 224, 1)
+                        
                         input_data = np.mean(input_data, axis=-1, keepdims=True)
                     preds = model.predict(input_data)
                     score = np.max(preds[0])
@@ -80,30 +80,29 @@ try :
                     
                     col1 = st.columns(1)[0]
                     with col1:
-                        st.metric("Verdict Médical", label, f"Score: {score*100:.2f}%")
+                        st.metric("Medical score", label, f"Score: {score*100:.2f}%")
                         st.image(original_img, caption="Radiographie originale", width='stretch')
 
 
         with tab2:
-            st.subheader("Analyse comparative Side-by-Side")
+            st.subheader("Analysis Summary")
                         
             st.write("---")
-            st.subheader("📍 Positionnement du Verdict")
+            st.subheader("📍Position")
 
-            # Création d'une barre de progression (0.0 à 1.0)
+            # Display progress bar as score indicator
             st.progress(float(score))
 
             col_left, col_center, col_right = st.columns([1, 2, 1])
             with col_left:
-                st.caption("✅ **0%** (Authentique / Sain)")
+                st.caption("✅ **0%** (Authentic / Benign)")
             with col_right:
                 st.caption("🚨 **100%** (Fake / Cancer)")
 
-            # Rappel de la règle de décision
             if score > 0.5:
-                st.warning(f"Le score de **{score*100:.1f}%** dépasse le seuil de risque de 50%.")
+                st.warning(f"The score **{score*100:.1f}%** exceeds the risk threshold of 50%.")
             else:
-                st.success(f"Le score de **{score*100:.1f}%** est inférieur au seuil de risque.")
+                st.success(f"The score of **{score*100:.1f}%** is below the risk threshold.")
             
             st.write("---")
 
@@ -111,12 +110,12 @@ try :
             if uploaded_file and len(selected_xai) >= 1:
                 # densenet only conv layer name fix
                 if "DenseNet" in selected_model:
-                    conv_layer = "densenet121" # Nom extrait de  erreur
+                    conv_layer = "densenet121" 
                 else:
                     conv_layer = [layer.name for layer in model.layers if isinstance(layer, (cv2.dnn_Layer, object)) and 'conv' in layer.name][-1]
                 cols = st.columns(len(selected_xai))
                 
-                # Stockage pour le rapport d'audit
+                # Audit metrics storage
                 metrics_data = []
 
                 for i, method in enumerate(selected_xai):
@@ -124,7 +123,7 @@ try :
                         st.info(f"Méthode : {method}")
                         start_time = time.time()
                         
-                        # --- GÉNÉRATION ---
+                        # Generate explanation
                         if method == "Grad-CAM":
                             heatmap = get_gradcam(model, input_data, conv_layer)
                             base_img = cv2.resize(np.stack([S_db]*3, axis=-1) if input_type=="Audio" else np.array(original_img), (224,224))
@@ -136,18 +135,13 @@ try :
                             with st.spinner("Calcul de LIME..."):
                                 lime_result = get_lime(model, input_data)
                                 
-                                # 1. Normalisation forcée pour éviter l'erreur
                                 if lime_result.max() > 1.0:
-                                    # Si les valeurs sont déjà en 0-255 mais en float, on convertit juste
                                     lime_display = lime_result.astype(np.uint8)
                                 else:
-                                    # Si elles sont en 0-1, on les passe en 0-255
                                     lime_display = (lime_result * 255).astype(np.uint8)
                                 
-                                # 2. Affichage avec l'image convertie
                                 st.image(lime_display, caption="Segments LIME", use_container_width=True)
                                 
-                                # Utiliser l'image convertie pour les métriques de calcul
                                 h_for_metric = cv2.cvtColor(lime_display, cv2.COLOR_RGB2GRAY)
                         
                         elif method == "SHAP":
@@ -158,16 +152,14 @@ try :
                                 result = shap_to_image(shap_vals, base_img)
                                 st.image(result, caption="Heatmap SHAP", use_container_width=True)
                                 
-                                # --- CORRECTION ICI ---
                                 if isinstance(shap_vals, list): shap_vals = shap_vals[0]
                                 if len(shap_vals.shape) == 4: shap_vals = shap_vals[0]
                                 
-                                # On garde une carte 2D (H, W) pour le calcul des métriques
                                 h_for_metric = np.abs(shap_vals).sum(axis=-1)
                         
                         duration = time.time() - start_time
 
-                        # --- CALCUL DES MÉTRIQUES ---
+                        # metrics calculation
                         sparsity = calculate_sparsity(h_for_metric)
                         drop = calculate_drop_score(model, input_data, h_for_metric)
                         
@@ -178,30 +170,28 @@ try :
                             "Vitesse (s)": duration
                         })
 
-                # --- AFFICHAGE DU RAPPORT D'AUDIT ---
+                # display audit report
                 st.divider()
-                st.subheader("📊 Rapport d'Audit Quantitatif")
+                st.subheader("📊 Audit Quantitatif résumé")
                 
                 col_table, col_radar = st.columns([1, 1])
                 
                 df = pd.DataFrame(metrics_data)
                 with col_table:
-                    st.dataframe(df.style.highlight_max(axis=0, subset=['Fidélité (Drop %)'], color='lightgreen'))
+                    st.dataframe(df.style.highlight_max(axis=0, subset=['Fidelity (Drop %)'], color='lightgreen'))
 
                 with col_radar:
-                    st.write("📈 *Profil d'interprétabilité*")
+                    st.write("📈 *Interpretability Profile*")
                     fig, ax = plt.subplots(figsize=(5, 5), subplot_kw=dict(polar=True))
                     
-                    categories = ['Fidélité', 'Sparsité', 'Vitesse']
+                    categories = ['Fidelity', 'Sparsity', 'Latency']
                     N = len(categories)
                     angles = [n / float(N) * 2 * np.pi for n in range(N)]
                     angles += angles[:1]
 
                     for m in metrics_data:
-                        # Normalisation pour le radar (0-100)
-                        # Vitesse : plus c'est rapide (petit), plus le score est haut
                         v_score = max(0, 100 - (m['Vitesse (s)'] * 10)) 
-                        values = [m['Fidélité (Drop %)'], m['Sparsité (%)'], v_score]
+                        values = [m['Fidelity (Drop %)'], m['Sparsity (%)'], v_score]
                         values += values[:1]
                         
                         ax.plot(angles, values, linewidth=2, label=m['Méthode'])
@@ -211,20 +201,24 @@ try :
                     st.pyplot(fig)
                 
                 st.write("---")
-                with st.expander("ℹ️ Comment interpréter les résultats ?"):
+                with st.expander("ℹ️ How to interpret the results?"):
                     st.markdown("""
-                    | Cas de figure | Confiance (Score IA) | Fidélité (Drop Score) | Interprétation |
+                    This table helps you correlate the **Verdict (Confidence)** with the **Visual Evidence (Fidelity/Drop Score)**.
+                    
+                    *Note: The confidence score represents the risk level (0% = Authentic/Healthy, 100% = Deepfake/Malignant).*
+
+                    | Scenario | Confidence (AI Score) | Fidelity (Drop Score) | Interpretation |
                     | :--- | :--- | :--- | :--- |
-                    | **1. Diagnostic Robuste** | 🟢 **Élevée** (> 80%) | 🟢 **Élevée** (> 50%) | ✅ **Fiable.** Preuve solide d'anomalie. |
-                    | **2. Le "Bluffeur"** | 🟢 **Élevée** (> 80%) | 🔴 **Faible** (< 20%) | ⚠️ **Méfiance.** Biais probable (regarde hors zone). |
-                    | **3. Le Signal Faible** | 🟠 **Moyenne** (50-80%) | 🟢 **Élevée** (> 50%) | 🔸 **Investiguer.** Détection précoce ou subtile. |
-                    | **4. Suspicion Levée** | 🔴 **Faible** (< 20%) | 🟢 **Élevée** (> 50%) | ✅ **Rassurant.** Zone suspecte analysée et jugée saine. |
-                    | **5. L'Aléatoire** | 🔴 **Faible** (~ 50%) | 🔴 **Faible** (< 20%) | ❌ **Rejet.** Le modèle est confus. |
-                    | **6. Absence de Signal** | 🔵 **Nulle** (~ 0%) | ⚪ **Nulle** (0%) | ✅ **Sain.** Aucun indice de fraude ou maladie trouvé. |
+                    | **1. Robust Diagnosis** | 🟢 **High** (> 80%) | 🟢 **High** (> 50%) | ✅ **Reliable.** Strong evidence of an anomaly found in the highlighted area. |
+                    | **2. The "Bluffer" (Bias)** | 🟢 **High** (> 80%) | 🔴 **Low** (< 20%) | ⚠️ **Caution.** Likely bias; the model is confident but looking at irrelevant areas. |
+                    | **3. Weak Signal** | 🟠 **Medium** (50-80%) | 🟢 **High** (> 50%) | 🔸 **Investigate.** Potential early detection or subtle anomaly identified. |
+                    | **4. Suspicion Cleared** | 🔵 **Low** (< 20%) | 🟢 **High** (> 50%) | ✅ **Reassuring.** A suspicious area was analyzed and confirmed as normal/healthy. |
+                    | **5. Random / Noise** | 🟠 **Medium** (~ 50%) | 🔴 **Low** (< 20%) | ❌ **Inconclusive.** The model is confused and the explanation is unstable. |
+                    | **6. No Signal** | 🔵 **Null** (~ 0%) | ⚪ **Null** (0%) | ✅ **Safe.** No suspicious features or traces were found at all. |
                     """)
                 
     else:
-        st.info("Veuillez uploader un fichier (Audio .wav ou Image .jpg/.png) pour commencer.")
+        st.info("Please upload an audio (.wav) or image (.png, .jpg) file to begin the analysis.")
 
 except Exception as e:
     st.error(f" Loading .... : {e}")

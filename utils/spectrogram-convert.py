@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 def save_spec(audio_data, sr, save_path):
-    fig = plt.figure(figsize=(2.24, 2.24), dpi=100) # Taille optimisée pour VGG16
+    fig = plt.figure(figsize=(2.24, 2.24), dpi=100) 
     fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
     ax = fig.add_subplot(1, 1, 1)
     ax.axis('off')
@@ -32,7 +32,6 @@ for i, item in enumerate(ds['train']):
     
     file_path = os.path.join(base_path, label_dir, f"audio_{i}.png")
     
-    # Extraction des données audio du dataset
     audio_array = item['audio']['array']
     sampling_rate = item['audio']['sampling_rate']
     

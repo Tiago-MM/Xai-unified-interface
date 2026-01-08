@@ -34,30 +34,26 @@ def shap_to_image(shap_values, original_img):
     return cv2.addWeighted(background, 0.6, heatmap, 0.4, 0)
 
 def calculate_sparsity(heatmap):
-    # Pourcentage de pixels avec une importance très faible (< 10% du max)
+    # return percentage of pixels below 10% of max value( ie, cold areas, non important)
     return (np.sum(heatmap < 0.1 * heatmap.max()) / heatmap.size) * 100
 
 def calculate_drop_score(model, input_data, heatmap):
-    # Simule l'impact de la suppression des zones importantes (Fidélité)
+    # original prediction
     orig_pred = model.predict(input_data)[0].max()
     
-    # 1. Création du masque (zones froides conservées)
+    # 1.creation of the mask with only cold areas
     mask = (heatmap < 0.5 * heatmap.max()).astype(float)
     
-    # 2. Redimensionnement du masque à la taille de l'image (224x224)
+    # size mask to input size
     mask = cv2.resize(mask, (input_data.shape[2], input_data.shape[1]))
     
-    # 3. CORRECTION : Adaptation automatique aux canaux (1 ou 3)
-    # On récupère le nombre de canaux de l'entrée actuelle (1 pour AlexNet, 3 pour VGG)
-    nb_channels = input_data.shape[-1] 
-    
-    # On empile le masque autant de fois que nécessaire (x1 ou x3)
+    nb_channels = input_data.shape[-1]  
     mask_stacked = np.stack([mask] * nb_channels, axis=-1)
     
-    # On ajoute la dimension batch (1, 224, 224, C)
+    # dimension batch
     mask_expanded = np.expand_dims(mask_stacked, axis=0)
     
-    # 4. Application du masque
+    # application with mask
     masked_input = input_data * mask_expanded
     
     new_pred = model.predict(masked_input)[0].max()
