@@ -153,7 +153,7 @@ if uploaded_file:
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.metric("Verdict Médical", label, f"Probabilité: {score*100:.2f}%")
+                    st.metric("Verdict Médical", label, f"Score: {score*100:.2f}%")
                     st.image(original_img, caption="Radiographie originale", width='stretch')
                 with col2:
                     st.subheader("Explication Grad-CAM")
