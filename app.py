@@ -136,7 +136,7 @@ if uploaded_file:
             if "VGG16" in selected_model:
                 conv_layer = "block5_conv3"
             elif "DenseNet" in selected_model:
-                conv_layer = "conv5_block16_concat" # Nom extrait de  erreur
+                conv_layer = "densenet121" # Nom extrait de  erreur
             elif "AlexNet" in selected_model:
                 conv_layer = "conv2d_13" # À vérifier selon  modèle AlexNet
             else:

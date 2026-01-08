@@ -16,6 +16,6 @@ def load_unified_model(model_name):
     elif "MobileNet" in model_name:
         return keras.models.load_model(os.path.join(script_dir, '..', '..', 'models', 'my_mobilenet.h5'))
     elif "DenseNet" in model_name:
-        return keras.models.load_model(os.path.join(script_dir, '..', '..', 'models', 'my_densenet.h5'))
+        return keras.models.load_model("/Users/tiago/Downloads/notebook/densenet_lung_opacity_tfkeras.h5")
     
     return keras.applications.vgg16.VGG16(weights='imagenet')
