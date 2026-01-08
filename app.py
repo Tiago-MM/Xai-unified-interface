@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import cv2
 from PIL import Image
 from models.audio_models import load_unified_model
-from explanations.xai_methods import get_gradcam, superimpose_heatmap, get_lime
+from explanations.xai_methods import get_gradcam, superimpose_heatmap, get_lime, explain_shap
 from utils.audio_proc import process_audio
 import pandas as pd
 import time
@@ -17,7 +17,39 @@ import time
 os.environ["TF_USE_LEGACY_KERAS"] = "1"
 @st.cache_resource
 
+def shap_to_image(shap_values, original_img):
+    # SHAP retourne souvent une liste pour chaque classe. 
+    # On prend les valeurs pour la classe prédite (souvent l'index 0 ou 1)
+    if isinstance(shap_values, list):
+        shap_values = shap_values[0]
 
+    # Suppression des dimensions inutiles (ex: batch size 1)
+    if len(shap_values.shape) == 4:
+        shap_values = shap_values[0]
+
+    # Moyenne sur les canaux (RGB -> Grayscale) pour la heatmap
+    shap_img = np.abs(shap_values).sum(axis=-1)
+    
+    # Normalisation Min-Max robuste
+    shap_min, shap_max = shap_img.min(), shap_img.max()
+    if shap_max > shap_min:
+        shap_img = (shap_img - shap_min) / (shap_max - shap_min)
+    
+    # Redimensionnement pour correspondre à l'image originale
+    shap_img_resized = cv2.resize(shap_img, (original_img.shape[1], original_img.shape[0]))
+    
+    # Création de la heatmap colorée
+    heatmap = np.uint8(255 * shap_img_resized)
+    heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+    
+    # Préparation de l'image de fond
+    if original_img.max() <= 1.0:
+        background = np.uint8(255 * original_img)
+    else:
+        background = original_img.astype(np.uint8)
+    
+    # Superposition
+    return cv2.addWeighted(background, 0.6, heatmap, 0.4, 0)
 
 def calculate_sparsity(heatmap):
     # Pourcentage de pixels avec une importance très faible (< 10% du max)
@@ -172,6 +204,21 @@ if uploaded_file:
                             
                             # Utiliser l'image convertie pour les métriques de calcul
                             h_for_metric = cv2.cvtColor(lime_display, cv2.COLOR_RGB2GRAY)
+                    
+                    elif method == "SHAP":
+                        with st.spinner("Calcul de SHAP..."):
+                            shap_vals = explain_shap(model, input_data)
+                            base_img = np.array(original_img) if input_type=="Image" else np.stack([S_db]*3, axis=-1)
+                            
+                            result = shap_to_image(shap_vals, base_img)
+                            st.image(result, caption="Heatmap SHAP", use_container_width=True)
+                            
+                            # --- CORRECTION ICI ---
+                            if isinstance(shap_vals, list): shap_vals = shap_vals[0]
+                            if len(shap_vals.shape) == 4: shap_vals = shap_vals[0]
+                            
+                            # On garde une carte 2D (H, W) pour le calcul des métriques
+                            h_for_metric = np.abs(shap_vals).sum(axis=-1)
                     
                     duration = time.time() - start_time
 

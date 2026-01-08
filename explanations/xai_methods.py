@@ -148,3 +148,37 @@ def get_lime(model, img_array):
     # Transformation pour que l'image soit compatible avec Streamlit (0 à 1)
     img_boundaried = mark_boundaries(temp / temp.max(), mask)
     return img_boundaried
+
+
+
+import streamlit as st
+import numpy as np
+import shap
+import tensorflow as tf
+
+def explain_shap(model, input_data):
+    # 1. Préparation du background (référence neutre)
+    # On utilise une seule image noire de la même taille que l'entrée
+    background = np.zeros_like(input_data) 
+    input_shape = input_data.shape[1:] # (224, 224, 3) ou (224, 224, 1)
+
+    def map_predict(x):
+        # x arrive ici souvent avec des dimensions imprévues par KernelExplainer
+        # On le reformate en 4D pour le modèle Keras
+        reshaped_x = x.reshape((-1,) + input_shape)
+        return model.predict(reshaped_x)
+
+    # On aplatit l'entrée pour SHAP Kernel
+    input_flat = input_data.reshape((1, -1))
+    background_flat = background.reshape((1, -1))
+
+    explainer = shap.KernelExplainer(map_predict, background_flat)
+    
+    # nsamples=50 est un compromis pour que Streamlit ne crash pas
+    shap_values = explainer.shap_values(input_flat, nsamples=50)
+    
+    # On redimensionne le résultat pour qu'il retrouve sa forme d'image
+    if isinstance(shap_values, list):
+        # Pour chaque classe de sortie, on redimensionne
+        return [sv.reshape(input_data.shape) for sv in shap_values]
+    return shap_values.reshape(input_data.shape)
