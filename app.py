@@ -25,13 +25,26 @@ def calculate_sparsity(heatmap):
 
 def calculate_drop_score(model, input_data, heatmap):
     # Simule l'impact de la suppression des zones importantes (Fidélité)
-    # Plus le score est haut, plus la zone expliquée est cruciale pour le modèle
     orig_pred = model.predict(input_data)[0].max()
     
-    # On crée un masque : on garde les zones froides, on cache les zones chaudes
+    # 1. Création du masque (zones froides conservées)
     mask = (heatmap < 0.5 * heatmap.max()).astype(float)
+    
+    # 2. Redimensionnement du masque à la taille de l'image (224x224)
     mask = cv2.resize(mask, (input_data.shape[2], input_data.shape[1]))
-    masked_input = input_data * np.expand_dims(np.stack([mask]*3, axis=-1), axis=0)
+    
+    # 3. CORRECTION : Adaptation automatique aux canaux (1 ou 3)
+    # On récupère le nombre de canaux de l'entrée actuelle (1 pour AlexNet, 3 pour VGG)
+    nb_channels = input_data.shape[-1] 
+    
+    # On empile le masque autant de fois que nécessaire (x1 ou x3)
+    mask_stacked = np.stack([mask] * nb_channels, axis=-1)
+    
+    # On ajoute la dimension batch (1, 224, 224, C)
+    mask_expanded = np.expand_dims(mask_stacked, axis=0)
+    
+    # 4. Application du masque
+    masked_input = input_data * mask_expanded
     
     new_pred = model.predict(masked_input)[0].max()
     drop = max(0, (orig_pred - new_pred) / orig_pred) * 100
@@ -99,6 +112,9 @@ if uploaded_file:
 
             else: # Traitement IMAGE (Repo 2)
                 input_data, original_img = process_chest_xray(uploaded_file)
+                if model.input_shape[-1] == 1 and input_data.shape[-1] == 3:
+                    # Conversion moyenne des canaux pour passer de (1, 224, 224, 3) à (1, 224, 224, 1)
+                    input_data = np.mean(input_data, axis=-1, keepdims=True)
                 preds = model.predict(input_data)
                 score = np.max(preds[0])
                 label = "MALIGNANT" if score > 0.5 else "BENIGN / NORMAL"
@@ -120,9 +136,9 @@ if uploaded_file:
             if "VGG16" in selected_model:
                 conv_layer = "block5_conv3"
             elif "DenseNet" in selected_model:
-                conv_layer = "conv5_block16_concat" # Nom extrait de votre erreur
+                conv_layer = "conv5_block16_concat" # Nom extrait de  erreur
             elif "AlexNet" in selected_model:
-                conv_layer = "conv2d_4" # À vérifier selon votre modèle AlexNet
+                conv_layer = "conv2d_13" # À vérifier selon  modèle AlexNet
             else:
                 # Par défaut, on prend la dernière couche avant le pooling si on ne connaît pas le nom
                 conv_layer = [layer.name for layer in model.layers if isinstance(layer, (cv2.dnn_Layer, object)) and 'conv' in layer.name][-1]
