@@ -2,15 +2,18 @@ import librosa
 import librosa.display
 import numpy as np
 import matplotlib.pyplot as plt
+import io
+import cv2
 
-def preprocess_audio(audio_file):
-    # 1. Charger l'audio
-    y, sr = librosa.load(audio_file, duration=3.0) 
-    
-    # 2. Créer le spectrogramme (Mel-spectrogram)
+# --- TRAITEMENT AUDIO (Repo 1) ---
+def process_audio(uploaded_file):
+    # Charger l'audio .wav
+    y, sr = librosa.load(io.BytesIO(uploaded_file.read()))
+    # Conversion en spectrogramme pour détection Deepfake
     S = librosa.feature.melspectrogram(y=y, sr=sr)
     S_db = librosa.power_to_db(S, ref=np.max)
-    
-    # 3. Normalisation/Resize pour le modèle (ex: 224x224 pour VGG16)
-    # Cette étape dépend de l'input_shape de votre modèle chargé
-    return S_db
+    # Préparation pour le CNN
+    img = cv2.resize(S_db, (224, 224))
+    img_rgb = np.stack([img]*3, axis=-1)
+    img_final = np.expand_dims(img_rgb, axis=0)
+    return img_final, S_db

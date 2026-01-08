@@ -28,7 +28,7 @@ os.makedirs(os.path.join(base_path, "FAKE"), exist_ok=True)
 
 
 for i, item in enumerate(ds['train']):
-    label_dir = "REAL" if item['label'] == 0 else "FAKE"
+    label_dir = "REAL" if item['label'] == 1 else "FAKE"
     
     file_path = os.path.join(base_path, label_dir, f"audio_{i}.png")
     

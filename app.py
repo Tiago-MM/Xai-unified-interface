@@ -9,6 +9,7 @@ import cv2
 from PIL import Image
 from models.audio_models import load_unified_model
 from explanations.xai_methods import get_gradcam, superimpose_heatmap, get_lime
+from utils.audio_proc import process_audio
 import pandas as pd
 import time
 
@@ -48,18 +49,7 @@ def process_chest_xray(uploaded_file):
     img_final = img_final / 255.0
     return img_final, image
 
-# --- TRAITEMENT AUDIO (Repo 1) ---
-def process_audio(uploaded_file):
-    # Charger l'audio .wav
-    y, sr = librosa.load(io.BytesIO(uploaded_file.read()), duration=3.0)
-    # Conversion en spectrogramme pour détection Deepfake
-    S = librosa.feature.melspectrogram(y=y, sr=sr)
-    S_db = librosa.power_to_db(S, ref=np.max)
-    # Préparation pour le CNN
-    img = cv2.resize(S_db, (224, 224))
-    img_rgb = np.stack([img]*3, axis=-1)
-    img_final = np.expand_dims(img_rgb, axis=0)
-    return img_final, S_db
+
 
 # --- INTERFACE STREAMLIT ---
 st.set_page_config(page_title="XAI Unified Interface", layout="wide")
