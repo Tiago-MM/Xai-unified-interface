@@ -10,91 +10,19 @@ from PIL import Image
 from models.audio_models import load_unified_model
 from explanations.xai_methods import get_gradcam, superimpose_heatmap, get_lime, explain_shap
 from utils.audio_proc import process_audio
+from utils.image_proc import process_chest_xray
+from utils.functions_utils import shap_to_image, calculate_sparsity, calculate_drop_score
 import pandas as pd
 import time
 
-# Configuration de l'environnement pour éviter les crashs sur Mac
+# avoid beug
 os.environ["TF_USE_LEGACY_KERAS"] = "1"
 @st.cache_resource
 
 
-def shap_to_image(shap_values, original_img):
-    # SHAP retourne souvent une liste pour chaque classe. 
-    # On prend les valeurs pour la classe prédite (souvent l'index 0 ou 1)
-    if isinstance(shap_values, list):
-        shap_values = shap_values[0]
 
-    # Suppression des dimensions inutiles (ex: batch size 1)
-    if len(shap_values.shape) == 4:
-        shap_values = shap_values[0]
-
-    # Moyenne sur les canaux (RGB -> Grayscale) pour la heatmap
-    shap_img = np.abs(shap_values).sum(axis=-1)
-    
-    # Normalisation Min-Max robuste
-    shap_min, shap_max = shap_img.min(), shap_img.max()
-    if shap_max > shap_min:
-        shap_img = (shap_img - shap_min) / (shap_max - shap_min)
-    
-    # Redimensionnement pour correspondre à l'image originale
-    shap_img_resized = cv2.resize(shap_img, (original_img.shape[1], original_img.shape[0]))
-    
-    # Création de la heatmap colorée
-    heatmap = np.uint8(255 * shap_img_resized)
-    heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
-    
-    # Préparation de l'image de fond
-    if original_img.max() <= 1.0:
-        background = np.uint8(255 * original_img)
-    else:
-        background = original_img.astype(np.uint8)
-    
-    # Superposition
-    return cv2.addWeighted(background, 0.6, heatmap, 0.4, 0)
-
-def calculate_sparsity(heatmap):
-    # Pourcentage de pixels avec une importance très faible (< 10% du max)
-    return (np.sum(heatmap < 0.1 * heatmap.max()) / heatmap.size) * 100
-
-def calculate_drop_score(model, input_data, heatmap):
-    # Simule l'impact de la suppression des zones importantes (Fidélité)
-    orig_pred = model.predict(input_data)[0].max()
-    
-    # 1. Création du masque (zones froides conservées)
-    mask = (heatmap < 0.5 * heatmap.max()).astype(float)
-    
-    # 2. Redimensionnement du masque à la taille de l'image (224x224)
-    mask = cv2.resize(mask, (input_data.shape[2], input_data.shape[1]))
-    
-    # 3. CORRECTION : Adaptation automatique aux canaux (1 ou 3)
-    # On récupère le nombre de canaux de l'entrée actuelle (1 pour AlexNet, 3 pour VGG)
-    nb_channels = input_data.shape[-1] 
-    
-    # On empile le masque autant de fois que nécessaire (x1 ou x3)
-    mask_stacked = np.stack([mask] * nb_channels, axis=-1)
-    
-    # On ajoute la dimension batch (1, 224, 224, C)
-    mask_expanded = np.expand_dims(mask_stacked, axis=0)
-    
-    # 4. Application du masque
-    masked_input = input_data * mask_expanded
-    
-    new_pred = model.predict(masked_input)[0].max()
-    drop = max(0, (orig_pred - new_pred) / orig_pred) * 100
-    return drop
-
-# --- TRAITEMENT IMAGE (CheXpert / Repo 2) ---
-def process_chest_xray(uploaded_file):
-    # Lecture de l'image médicale
-    image = Image.open(uploaded_file).convert('RGB')
-    img_array = np.array(image)
-    # Redimensionnement standard pour CNN
-    img_resized = cv2.resize(img_array, (224, 224))
-    img_final = np.expand_dims(img_resized, axis=0)
-    # Normalisation pour modèles Keras
-    img_final = img_final / 255.0
-    return img_final, image
-
+def main():
+    return ''
 
 try :
         
@@ -150,13 +78,10 @@ try :
                     score = np.max(preds[0])
                     label = "MALIGNANT" if score > 0.5 else "BENIGN / NORMAL"
                     
-                    col1, col2 = st.columns(2)
+                    col1 = st.columns(1)[0]
                     with col1:
                         st.metric("Verdict Médical", label, f"Score: {score*100:.2f}%")
                         st.image(original_img, caption="Radiographie originale", width='stretch')
-                    with col2:
-                        st.subheader("Explication Grad-CAM")
-                        st.warning("Identification des zones tumorales suspectes dans les poumons.")
 
 
         with tab2:
@@ -288,19 +213,15 @@ try :
                 st.write("---")
                 with st.expander("ℹ️ Comment interpréter les résultats ?"):
                     st.markdown("""
-                    Ce tableau vous aide à croiser le **Verdict (Confiance)** avec la **Preuve visuelle (Fidélité/Drop Score)**. 
-                    
-                    *Le score de confiance est ici exprimé par rapport au risque (0% = Sain/Vrai, 100% = Malade/Fake).*
-
                     | Cas de figure | Confiance (Score IA) | Fidélité (Drop Score) | Interprétation |
                     | :--- | :--- | :--- | :--- |
-                    | **1. Diagnostic Robuste** | 🟢 **Élevée** (> 80%) | 🟢 **Élevée** (> 50%) | ✅ **Fiable.** Le modèle est sûr de lui et la zone rouge est la cause directe de sa décision. |
-                    | **2. Le "Bluffeur" (Biais)** | 🟢 **Élevée** (> 80%) | 🔴 **Faible** (< 20%) | ⚠️ **Méfiance.** Le modèle est sûr, mais il regarde ailleurs (biais, bruit de fond, logo). |
-                    | **3. Le Signal Faible** | 🟠 **Moyenne** (50-80%) | 🟢 **Élevée** (> 50%) | 🔸 **Investiguer.** Le modèle hésite, mais il a repéré une anomalie très précise dans la zone rouge. |
-                    | **4. Suspicion Levée** | 🔴 **Faible** (< 20%) | 🟢 **Élevée** (> 50%) | ✅ **Rassurant.** Le modèle a analysé la zone suspecte mais a conclu qu'elle était normale. |
-                    | **5. L'Aléatoire** | 🔴 **Faible** (< 50%) | 🔴 **Faible** (< 20%) | ❌ **Rejet.** Le modèle ne sait pas et l'explication est floue (bruit). |
+                    | **1. Diagnostic Robuste** | 🟢 **Élevée** (> 80%) | 🟢 **Élevée** (> 50%) | ✅ **Fiable.** Preuve solide d'anomalie. |
+                    | **2. Le "Bluffeur"** | 🟢 **Élevée** (> 80%) | 🔴 **Faible** (< 20%) | ⚠️ **Méfiance.** Biais probable (regarde hors zone). |
+                    | **3. Le Signal Faible** | 🟠 **Moyenne** (50-80%) | 🟢 **Élevée** (> 50%) | 🔸 **Investiguer.** Détection précoce ou subtile. |
+                    | **4. Suspicion Levée** | 🔴 **Faible** (< 20%) | 🟢 **Élevée** (> 50%) | ✅ **Rassurant.** Zone suspecte analysée et jugée saine. |
+                    | **5. L'Aléatoire** | 🔴 **Faible** (~ 50%) | 🔴 **Faible** (< 20%) | ❌ **Rejet.** Le modèle est confus. |
+                    | **6. Absence de Signal** | 🔵 **Nulle** (~ 0%) | ⚪ **Nulle** (0%) | ✅ **Sain.** Aucun indice de fraude ou maladie trouvé. |
                     """)
-
                 
     else:
         st.info("Veuillez uploader un fichier (Audio .wav ou Image .jpg/.png) pour commencer.")
