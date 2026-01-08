@@ -165,9 +165,9 @@ try :
                         
                         metrics_data.append({
                             "Méthode": method,
-                            "Sparsité (%)": sparsity,
-                            "Fidélité (Drop %)": drop,
-                            "Vitesse (s)": duration
+                            "Sparsity (%)": sparsity,
+                            "Fidelity (Drop %)": drop,
+                            "Latency (s)": duration
                         })
 
                 # display audit report
@@ -190,7 +190,7 @@ try :
                     angles += angles[:1]
 
                     for m in metrics_data:
-                        v_score = max(0, 100 - (m['Vitesse (s)'] * 10)) 
+                        v_score = max(0, 100 - (m['Latency (s)'] * 10)) 
                         values = [m['Fidelity (Drop %)'], m['Sparsity (%)'], v_score]
                         values += values[:1]
                         

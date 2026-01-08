@@ -8,3 +8,6 @@ Pillow
 matplotlib
 scikit-image
 lime
+shap
+pandas
+plotly
