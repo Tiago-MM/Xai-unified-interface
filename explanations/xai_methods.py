@@ -54,11 +54,34 @@ def get_lime(model, img_array):
     """Génère une explication LIME en identifiant les super-pixels influents."""
     explainer = lime_image.LimeImageExplainer()
     
+    input_img = img_array[0].astype('double')
+    
+    # --- FIX START: Gestion Grayscale vs RGB ---
+    # Si l'image est en N&B (1 canal), on doit feinter LIME qui veut du RGB
+    if input_img.shape[-1] == 1:
+        # 1. On crée une fausse image RGB pour LIME (Stacking x3)
+        # input_img[:,:,0] permet de passer de (224,224,1) à (224,224)
+        image_to_explain = np.stack([input_img[:,:,0]]*3, axis=-1)
+        
+        # 2. On définit une fonction "wrapper" pour la prédiction
+        # LIME va envoyer des images RGB (N, 224, 224, 3)
+        # Nous on doit les remettre en (N, 224, 224, 1) pour le modèle
+        def predict_wrapper(images):
+            # Conversion RGB -> Grayscale par moyenne des canaux
+            images_gray = np.mean(images, axis=-1, keepdims=True)
+            return model.predict(images_gray)
+            
+        prediction_fn = predict_wrapper
+    else:
+        # Cas standard (VGG16, MobileNet, etc.) : Tout est déjà en RGB
+        image_to_explain = input_img
+        prediction_fn = model.predict
+    # --- FIX END ---
+
     # explainer.explain_instance prend une image 3D (pas de batch)
-    # On réduit num_samples à 50 pour la rapidité en démo
     explanation = explainer.explain_instance(
-        img_array[0].astype('double'), 
-        model.predict, 
+        image_to_explain, 
+        prediction_fn, # On utilise notre wrapper intelligent ou la fonction standard
         top_labels=1, 
         hide_color=0, 
         num_samples=50 
