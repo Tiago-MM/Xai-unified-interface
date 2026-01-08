@@ -9,11 +9,32 @@ import cv2
 from PIL import Image
 from models.audio_models import load_unified_model
 from explanations.xai_methods import get_gradcam, superimpose_heatmap, get_lime
+import pandas as pd
+import time
 
 # Configuration de l'environnement pour éviter les crashs sur Mac
 os.environ["TF_USE_LEGACY_KERAS"] = "1"
 @st.cache_resource
 
+
+
+def calculate_sparsity(heatmap):
+    # Pourcentage de pixels avec une importance très faible (< 10% du max)
+    return (np.sum(heatmap < 0.1 * heatmap.max()) / heatmap.size) * 100
+
+def calculate_drop_score(model, input_data, heatmap):
+    # Simule l'impact de la suppression des zones importantes (Fidélité)
+    # Plus le score est haut, plus la zone expliquée est cruciale pour le modèle
+    orig_pred = model.predict(input_data)[0].max()
+    
+    # On crée un masque : on garde les zones froides, on cache les zones chaudes
+    mask = (heatmap < 0.5 * heatmap.max()).astype(float)
+    mask = cv2.resize(mask, (input_data.shape[2], input_data.shape[1]))
+    masked_input = input_data * np.expand_dims(np.stack([mask]*3, axis=-1), axis=0)
+    
+    new_pred = model.predict(masked_input)[0].max()
+    drop = max(0, (orig_pred - new_pred) / orig_pred) * 100
+    return drop
 
 # --- TRAITEMENT IMAGE (CheXpert / Repo 2) ---
 def process_chest_xray(uploaded_file):
@@ -103,33 +124,99 @@ if uploaded_file:
 
     with tab2:
         st.subheader("Analyse comparative Side-by-Side")
+        
         if uploaded_file and len(selected_xai) >= 1:
-            conv_layer = "block5_conv3" if "VGG16" in selected_model else "conv5_block3_out"
+            # Remplacer la ligne de sélection de conv_layer par celle-ci
+            if "VGG16" in selected_model:
+                conv_layer = "block5_conv3"
+            elif "DenseNet" in selected_model:
+                conv_layer = "conv5_block16_concat" # Nom extrait de votre erreur
+            elif "AlexNet" in selected_model:
+                conv_layer = "conv2d_4" # À vérifier selon votre modèle AlexNet
+            else:
+                # Par défaut, on prend la dernière couche avant le pooling si on ne connaît pas le nom
+                conv_layer = [layer.name for layer in model.layers if isinstance(layer, (cv2.dnn_Layer, object)) and 'conv' in layer.name][-1]
             cols = st.columns(len(selected_xai))
             
+            # Stockage pour le rapport d'audit
+            metrics_data = []
+
             for i, method in enumerate(selected_xai):
                 with cols[i]:
                     st.info(f"Méthode : {method}")
+                    start_time = time.time()
                     
+                    # --- GÉNÉRATION ---
                     if method == "Grad-CAM":
                         heatmap = get_gradcam(model, input_data, conv_layer)
                         base_img = cv2.resize(np.stack([S_db]*3, axis=-1) if input_type=="Audio" else np.array(original_img), (224,224))
                         result = superimpose_heatmap(heatmap, base_img)
-                        st.image(result, caption="Heatmap Grad-CAM", width='stretch')
-                    
+                        st.image(result, caption="Heatmap Grad-CAM", use_container_width=True)
+                        h_for_metric = heatmap
+
                     elif method == "LIME":
-                        with st.spinner("Calcul de LIME en cours..."):
+                        with st.spinner("Calcul de LIME..."):
                             lime_result = get_lime(model, input_data)
                             
-                            # --- AJOUT DE LA NORMALISATION ---
-                            # Si l'image est en flottants, on la ramène entre 0 et 255
-                            if lime_result.max() <= 1.0:
-                                lime_result = (lime_result * 255).astype(np.uint8)
+                            # 1. Normalisation forcée pour éviter l'erreur
+                            if lime_result.max() > 1.0:
+                                # Si les valeurs sont déjà en 0-255 mais en float, on convertit juste
+                                lime_display = lime_result.astype(np.uint8)
                             else:
-                                lime_result = lime_result.astype(np.uint8)
+                                # Si elles sont en 0-1, on les passe en 0-255
+                                lime_display = (lime_result * 255).astype(np.uint8)
+                            
+                            # 2. Affichage avec l'image convertie
+                            st.image(lime_display, caption="Segments LIME", use_container_width=True)
+                            
+                            # Utiliser l'image convertie pour les métriques de calcul
+                            h_for_metric = cv2.cvtColor(lime_display, cv2.COLOR_RGB2GRAY)
+                    
+                    duration = time.time() - start_time
 
-                            st.image(lime_result, caption="Segments LIME (Top Features)", width='stretch')
-                    else:
-                        st.image("https://via.placeholder.com/300?text=" + method, width='stretch')
+                    # --- CALCUL DES MÉTRIQUES ---
+                    sparsity = calculate_sparsity(h_for_metric)
+                    drop = calculate_drop_score(model, input_data, h_for_metric)
+                    
+                    metrics_data.append({
+                        "Méthode": method,
+                        "Sparsité (%)": sparsity,
+                        "Fidélité (Drop %)": drop,
+                        "Vitesse (s)": duration
+                    })
+
+            # --- AFFICHAGE DU RAPPORT D'AUDIT ---
+            st.divider()
+            st.subheader("📊 Rapport d'Audit Quantitatif")
+            
+            col_table, col_radar = st.columns([1, 1])
+            
+            df = pd.DataFrame(metrics_data)
+            with col_table:
+                st.dataframe(df.style.highlight_max(axis=0, subset=['Fidélité (Drop %)'], color='lightgreen'))
+
+            with col_radar:
+                st.write("📈 *Profil d'interprétabilité*")
+                fig, ax = plt.subplots(figsize=(5, 5), subplot_kw=dict(polar=True))
+                
+                categories = ['Fidélité', 'Sparsité', 'Vitesse']
+                N = len(categories)
+                angles = [n / float(N) * 2 * np.pi for n in range(N)]
+                angles += angles[:1]
+
+                for m in metrics_data:
+                    # Normalisation pour le radar (0-100)
+                    # Vitesse : plus c'est rapide (petit), plus le score est haut
+                    v_score = max(0, 100 - (m['Vitesse (s)'] * 10)) 
+                    values = [m['Fidélité (Drop %)'], m['Sparsité (%)'], v_score]
+                    values += values[:1]
+                    
+                    ax.plot(angles, values, linewidth=2, label=m['Méthode'])
+                    ax.fill(angles, values, alpha=0.1)
+
+                plt.xticks(angles[:-1], categories)
+                st.pyplot(fig)
+
+            
 else:
     st.info("Veuillez uploader un fichier (Audio .wav ou Image .jpg/.png) pour commencer.")
