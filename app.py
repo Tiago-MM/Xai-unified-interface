@@ -132,15 +132,10 @@ if uploaded_file:
         st.subheader("Analyse comparative Side-by-Side")
         
         if uploaded_file and len(selected_xai) >= 1:
-            # Remplacer la ligne de sélection de conv_layer par celle-ci
-            if "VGG16" in selected_model:
-                conv_layer = "block5_conv3"
-            elif "DenseNet" in selected_model:
+            # densenet only conv layer name fix
+            if "DenseNet" in selected_model:
                 conv_layer = "densenet121" # Nom extrait de  erreur
-            elif "AlexNet" in selected_model:
-                conv_layer = "conv2d_13" # À vérifier selon  modèle AlexNet
             else:
-                # Par défaut, on prend la dernière couche avant le pooling si on ne connaît pas le nom
                 conv_layer = [layer.name for layer in model.layers if isinstance(layer, (cv2.dnn_Layer, object)) and 'conv' in layer.name][-1]
             cols = st.columns(len(selected_xai))
             
