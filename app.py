@@ -221,4 +221,4 @@ try :
         st.info("Please upload an audio (.wav) or image (.png, .jpg) file to begin the analysis.")
 
 except Exception as e:
-    st.error(f" Loading .... : {e}")
+    pass
