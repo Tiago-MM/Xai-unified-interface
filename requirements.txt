@@ -11,3 +11,4 @@ lime
 shap
 pandas
 plotly
+datasets
